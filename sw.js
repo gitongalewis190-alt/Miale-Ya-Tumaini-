@@ -1,15 +1,17 @@
 /* Miale ya Tumaini · service worker
    Precaches the shell, serves an offline page for navigations when offline. */
-const CACHE_NAME = 'miale-shell-v1';
+const CACHE_NAME = 'miale-shell-v3';
 const SHELL = [
   './',
   './index.html',
   './styles.css',
   './app.js',
+  './admin.js',
   './offline.html',
   './manifest.webmanifest',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  './icons/logo.png'
 ];
 
 self.addEventListener('install', function (event) {

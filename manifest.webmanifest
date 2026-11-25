@@ -1,16 +1,1 @@
-{
-  "name": "Miale ya Tumaini",
-  "short_name": "Miale",
-  "description": "Psychosocial support, education, livelihoods and legal assistance for children and families in Kware, Ongata Rongai, Kenya.",
-  "start_url": "./index.html",
-  "scope": "./",
-  "display": "standalone",
-  "orientation": "portrait-primary",
-  "background_color": "#F5F6F4",
-  "theme_color": "#0F3B38",
-  "lang": "en",
-  "icons": [
-    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
-    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" }
-  ]
-}
+{"name":"Miale ya Tumaini","short_name":"Miale","description":"Psychosocial support, education, livelihoods and legal assistance for children and families in Kware, Ongata Rongai, Kenya.","start_url":"./index.html","scope":"./","display":"standalone","orientation":"portrait-primary","background_color":"#F6F0E4","theme_color":"#0B4FC4","lang":"en","icons":[{"src":"icons/icon-192.png","sizes":"192x192","type":"image/png","purpose":"any"},{"src":"icons/icon-512.png","sizes":"512x512","type":"image/png","purpose":"any"}]}
