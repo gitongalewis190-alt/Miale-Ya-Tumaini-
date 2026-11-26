@@ -272,6 +272,7 @@
       loadAdminData().then(function () { if (curTab === tab) panel(tab); });
     };
     var showLoginScreen = function () { login.hidden = false; shell.hidden = true; };
+    if (window.MT_CONFIG && MT_CONFIG.devOpenAdmin) { grant(); openShell(); return; }
     if (!DB().on) { if (signedIn()) openShell(); else { showLogin('signin'); showLoginScreen(); } return; }
     if (signedIn()) { openShell(); return; }
     checkAccess().then(function (ok) { if (ok) { grant(); openShell(); } else showLoginScreen(); });
