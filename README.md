@@ -24,7 +24,7 @@ Photos of children show on the public site only after **Consent** is ticked on e
 Visitor comments show only after **Approve and show**. The signature is visible to admins only and is never published.
 
 ## For the backend developers
-Content is currently saved in the visitor's own browser (localStorage + IndexedDB), so changes made in the admin are visible only on that browser. Read DATA.md for the entities to store.
+Content, photos, comments, statistics and admin accounts are stored in Supabase once `config.js` is filled in (see JOURNEY.md, section 8). Without it, the site falls back to browser storage.
 Replace these, all marked BACKEND in the code:
 - `app.js`: `saveS`, `mPut` / `mDel` / `loadMedia` (media), the comment store (`mt-comments`), the event log (`mt-events`), the visit log (`mt-visit-log`).
 - `admin.js`: `adminLogin`. **Until this is replaced, anyone can open the admin.** Do not publish with it open.

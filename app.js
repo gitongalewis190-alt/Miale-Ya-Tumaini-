@@ -64,7 +64,7 @@
     ['section', 'Section', 'Moving between sections of the site.'],
     ['media', 'Play', 'Starting or pausing a recording.']
   ];
-  var SOUND_DEF = { on: true, vol: 50, pack: 'soft', haptics: true, ev: { click: true, select: true, success: true, error: true, notify: true, comment: true, donate: true, section: true, media: true } };
+  var SOUND_DEF = { on: true, vol: 50, pack: 'keys', haptics: true, ev: { click: true, select: true, success: true, error: true, notify: true, comment: true, donate: true, section: true, media: true } };
   var LOOK_DEF = { morph: 'glass', glass: true, font: 'bricolage', size: 100, motion: 'rich', sound: SOUND_DEF };
 
   /* ---------- default content ---------- */
@@ -77,7 +77,7 @@
     c_consent: 'I agree that my first name and comment may be shown on this site after approval.', c_sig: 'Your signature', c_sig_clear: 'Clear', c_send: 'Send comment',
     c_e1: 'Please write your comment.', c_e2: 'Please tick the box to agree.', c_e3: 'Please sign in the box.', c_ok: 'Thank you. Your comment is with our team for review.',
     ph: 'Phone', em: 'Email', find: 'Find us', more: 'Learn more', powered: 'Powered by', quick: 'Explore', reach: 'Reach us', follow: 'Follow us', all: 'All',
-    mg_see: 'Open programme', mg_take: 'Take part', mg_explore: 'Explore', mg_prog: 'Programmes', mg_comment: 'Leave a comment' };
+    mg_see: 'Open programme', mg_take: 'Take part', mg_explore: 'Explore', mg_prog: 'Programmes', mg_comment: 'Leave a comment', mg_discover: 'Discover' };
   var SEC_SW = { nav_work: 'Kazi zetu', nav_impact: 'Athari', nav_give: 'Changia', nav_gallery: 'Picha', nav_voices: 'Sauti', nav_videos: 'Video', nav_how: 'Jinsi tunavyofanya kazi', nav_visit: 'Tembelea',
     pil_t: 'Tunachofanya', prog_t: 'Programu zetu', prog_i: 'Programu sita. Fungua moja kuona inajumuisha nini.', imp_t: 'Athari', imp_i: 'Kazi yetu kwa takwimu.',
     give_t: 'Mpe mtoto mlo', give_i: 'Kila mchango huwaweka watoto darasani, wakiwa wamelishwa na wakijifunza.', give_btn: 'Changia sasa', give_call: 'Ungependa kuchangia kwa simu?',
@@ -87,7 +87,7 @@
     c_consent: 'Nakubali jina langu la kwanza na maoni yangu yaonyeshwe kwenye tovuti hii baada ya kuidhinishwa.', c_sig: 'Sahihi yako', c_sig_clear: 'Futa', c_send: 'Tuma maoni',
     c_e1: 'Tafadhali andika maoni yako.', c_e2: 'Tafadhali weka alama ya kukubali.', c_e3: 'Tafadhali weka sahihi yako.', c_ok: 'Asante. Maoni yako yametumwa kwa mapitio.',
     ph: 'Simu', em: 'Barua pepe', find: 'Tupate', more: 'Soma zaidi', powered: 'Inaendeshwa na', quick: 'Gundua', reach: 'Wasiliana nasi', follow: 'Tufuate', all: 'Yote',
-    mg_see: 'Fungua programu', mg_take: 'Shiriki', mg_explore: 'Gundua', mg_prog: 'Programu', mg_comment: 'Acha maoni' };
+    mg_see: 'Fungua programu', mg_take: 'Shiriki', mg_explore: 'Gundua', mg_prog: 'Programu', mg_comment: 'Acha maoni', mg_discover: 'Jifunze' };
   var CONTACT = { phones: ['0723 315 423', '0790 943 693'], email: 'mialeyatumaini@gmail.com', wa: '254723315423', fb: 'https://www.facebook.com/MialeYaTumaini', ig: 'https://www.instagram.com/MialeYaTumaini' };
   var CATS = [['kids', 'Children'], ['visitors', 'Visitors with children'], ['moments', 'Moments together'], ['stories', 'Stories'], ['programmes', 'Programmes']];
   var CONSENT_CATS = ['kids', 'visitors', 'moments', 'stories'];
@@ -155,9 +155,20 @@
   if (S.logo) { S.slots.logo = S.logo; }
   delete S.hero; delete S.logo;
 
-  function saveS() { LS.set('mt-s', JSON.stringify(S)); } // BACKEND: replace with an API write
+  var saveT = null;
+  function saveS() {
+    LS.set('mt-s', JSON.stringify(S));
+    if (window.MTDB && MTDB.on && adminOn()) {
+      clearTimeout(saveT);
+      saveT = setTimeout(function () {
+        MTDB.saveContent(S).catch(function () {
+          if (MT.banner) MT.banner({ kind: 'error', title: 'Not saved online', body: 'Check the connection. Your change is kept on this device.' });
+        });
+      }, 700);
+    }
+  }
   function getLang() { return lang; }
-  function setLangValue(l) { lang = l === 'sw' ? 'sw' : 'en'; LS.set('mt-lang', lang); document.documentElement.lang = lang; }
+  function setLangValue(l) { lang = l === 'sw' ? 'sw' : 'en'; LS.set('mt-lang', lang); document.documentElement.lang = lang; savePrefs(); }
   function get(k) { var v = S.c[lang][k]; return v !== undefined ? v : DEF[lang][k]; }
   function setG(k, v) { S.c[lang][k] = v; saveS(); flash(); }
   var ft;
@@ -213,11 +224,58 @@
   var idb = null, mem = [], MEDIA = [], urls = {};
   function openDB() { return new Promise(function (res) { try { var r = indexedDB.open('miale-media', 1); r.onupgradeneeded = function () { r.result.createObjectStore('m', { keyPath: 'id' }); }; r.onsuccess = function () { idb = r.result; res(); }; r.onerror = function () { res(); }; } catch (e) { res(); } }); }
   function mAll() { return new Promise(function (res) { if (!idb) return res(mem.slice()); var q = idb.transaction('m').objectStore('m').getAll(); q.onsuccess = function () { res(q.result); }; q.onerror = function () { res(mem.slice()); }; }); }
-  function mPut(o) { return new Promise(function (res) { if (!idb) { var i = mem.findIndex(function (x) { return x.id === o.id; }); if (i < 0) mem.push(o); else mem[i] = o; return res(); } var tx = idb.transaction('m', 'readwrite'); tx.objectStore('m').put(o); tx.oncomplete = res; tx.onerror = res; }); } // BACKEND
-  function mDel(id) { return new Promise(function (res) { if (!idb) { mem = mem.filter(function (x) { return x.id !== id; }); return res(); } var tx = idb.transaction('m', 'readwrite'); tx.objectStore('m').delete(id); tx.oncomplete = res; tx.onerror = res; }); } // BACKEND
-  function loadMedia() { return mAll().then(function (l) { MEDIA = l; }); } // BACKEND
-  function byId(id) { return MEDIA.filter(function (m) { return m.id === id; })[0]; }
-  function urlOf(m) { if (!urls[m.id]) { urls[m.id] = URL.createObjectURL(m.blob); } return urls[m.id]; }
+  function mPutLocal(o) { return new Promise(function (res) { if (!idb) { var i = mem.findIndex(function (x) { return x.id === o.id; }); if (i < 0) mem.push(o); else mem[i] = o; return res(); } var tx = idb.transaction('m', 'readwrite'); tx.objectStore('m').put(o); tx.oncomplete = res; tx.onerror = res; }); } // BACKEND
+  function mDelLocal(id) { return new Promise(function (res) { if (!idb) { mem = mem.filter(function (x) { return x.id !== id; }); return res(); } var tx = idb.transaction('m', 'readwrite'); tx.objectStore('m').delete(id); tx.oncomplete = res; tx.onerror = res; }); } // BACKEND
+  /* ---------- Supabase: remote content, comments, media ---------- */
+  function uuid() { return (window.crypto && crypto.randomUUID) ? crypto.randomUUID() : (Date.now().toString(36) + Math.random().toString(36).slice(2, 12)); }
+  function loadRemote() {
+    if (!(window.MTDB && MTDB.on)) return Promise.resolve();
+    return Promise.all([
+      MTDB.loadContent().then(function (v) {
+        if (v && typeof v === 'object') {
+          S = v; S.c = S.c || { en: {}, sw: {} }; S.c.en = S.c.en || {}; S.c.sw = S.c.sw || {};
+          S.col = S.col || {}; S.cats = S.cats || {}; S.slots = S.slots || {}; S.focus = S.focus || {}; S.look = S.look || {};
+          LS.set('mt-s', JSON.stringify(S));
+        }
+      }).catch(function () {}),
+      MTDB.listComments(false).then(function (rows) {
+        window.__MT_PUBLIC_COMMENTS = rows.map(function (r) { return { id: r.id, n: r.name || '', m: r.message, ok: true, d: Date.parse(r.created_at) }; });
+      }).catch(function () {})
+    ]);
+  }
+  function mapRow(r) {
+    return { id: r.id, kind: r.kind, cat: r.cat, consent: r.consent, title: r.title, speaker: r.speaker, lang: r.lang, desc: r.descr,
+      date: Date.parse(r.created_at), dur: Number(r.dur) || 0, plays: r.plays || 0, path: r.path, mime: r.mime,
+      url: MTDB.publicUrl(r.path), origPath: r.orig_path || null };
+  }
+  function extOf(type) { return ((type || 'application/octet-stream').split('/')[1] || 'bin').split(';')[0].replace('jpeg', 'jpg').replace('mpeg', 'mp3').replace('x-wav', 'wav'); }
+  function mPut(o) {
+    if (!(window.MTDB && MTDB.on)) return mPutLocal(o);
+    if (!o.url) {
+      var path = uuid() + '.' + extOf(o.blob && o.blob.type);
+      return MTDB.uploadFile(path, o.blob).then(function () {
+        return MTDB.insertMedia({ kind: o.kind, cat: o.cat || null, consent: !!o.consent, title: o.title || '', speaker: o.speaker || '', lang: o.lang || '', descr: o.desc || '', path: path, mime: o.blob.type, size_bytes: o.blob.size, dur: o.dur || 0, plays: 0 });
+      }).then(mapRow);
+    }
+    var patch = { cat: o.cat || null, consent: !!o.consent, title: o.title || '', speaker: o.speaker || '', lang: o.lang || '', descr: o.desc || '', dur: o.dur || 0, plays: o.plays || 0 };
+    if (o.blob) {
+      var p2 = uuid() + '.' + extOf(o.blob.type);
+      patch.path = p2; patch.mime = o.blob.type; patch.size_bytes = o.blob.size; patch.orig_path = o.origPath || null;
+      return MTDB.uploadFile(p2, o.blob).then(function () { return MTDB.updateMedia(o.id, patch); }).then(function () { return o; });
+    }
+    return MTDB.updateMedia(o.id, patch).then(function () { return o; });
+  }
+  function mDel(id) {
+    if (!(window.MTDB && MTDB.on)) return mDelLocal(id);
+    var m = byId(id);
+    return MTDB.deleteMedia(id).then(function () { return m && m.path ? MTDB.removeFile(m.path) : null; });
+  }
+  function loadMedia() {
+    if (!(window.MTDB && MTDB.on)) return mAll().then(function (l) { MEDIA = l; });
+    return MTDB.listMedia().then(function (rows) { MEDIA = rows.map(mapRow); }).catch(function () {});
+  }
+  function byId(id) { return MEDIA.filter(function (m) { return String(m.id) === String(id); })[0]; }
+  function urlOf(m) { if (m.url) return m.url; if (!urls[m.id]) { urls[m.id] = URL.createObjectURL(m.blob); } return urls[m.id]; }
   function imgUrl(id, fallback) { var m = id && byId(id); return m ? urlOf(m) : fallback; }
   function shrink(file, max, type) {
     return new Promise(function (res) {
@@ -243,12 +301,13 @@
   function adminOn() { try { return sessionStorage.getItem('mt-admin') === '1'; } catch (e) { return !!window.__MT_ADMIN; } }
   function track(k, d) {
     if (IS_PREVIEW || view !== 'site' || adminOn()) return;
+    if (window.MTDB && MTDB.on) MTDB.track(k, d);
     var log = jget('mt-events', []);
     log.push({ t: Date.now(), k: k, d: String(d || '').slice(0, 120) });
     LS.set('mt-events', JSON.stringify(log.slice(-4000)));
   }
-  function events() { return jget('mt-events', []); }
-  function visits() { return jget('mt-visit-log', []).map(function (v) { return typeof v === 'number' ? { t: v, dev: 'd', id: 'old' } : v; }); }
+  function events() { return window.__MT_STATS ? window.__MT_STATS.events : jget('mt-events', []); }
+  function visits() { if (window.__MT_STATS) return window.__MT_STATS.visits; return jget('mt-visit-log', []).map(function (v) { return typeof v === 'number' ? { t: v, dev: 'd', id: 'old' } : v; }); }
   function dayKey(t) { var d = new Date(t); return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0'); }
 
   /* ---------- colours ---------- */
@@ -295,9 +354,9 @@
   function applyTheme(m) {
     if (['light', 'dark', 'system'].indexOf(m) < 0) m = 'system';
     document.documentElement.dataset.theme = m;
-    LS.set('mt-theme', m);
+    LS.set('mt-theme', m); savePrefs();
     $$('[data-theme-set]').forEach(function (b) { b.setAttribute('aria-pressed', b.dataset.themeSet === m); });
-    placeSeg();
+    placeSeg(); syncDarkBtn();
   }
   function themeSeg() {
     return '<div class="seg" role="group" aria-label="Theme"><span class="th"></span>' +
@@ -364,7 +423,7 @@
     var B = get('brand'), H = get('hero'), M = get('mission'), PL = get('pillars'), P = get('programmes'), F = get('figures'), GV = get('give'), HW = get('how'), C = get('contact'), T = get('testimonials'), FT = get('foot'), VD = get('videos') || [];
     var voices = MEDIA.filter(function (m) { return m.kind === 'audio'; }).sort(function (a, b) { return b.date - a.date; });
     var gal = visibleGal();
-    var cms = jget('mt-comments', []).filter(function (c) { return c.ok; });
+    var cms = (window.__MT_PUBLIC_COMMENTS || jget('mt-comments', [])).filter(function (c) { return c.ok; });
     var stories = T.concat(cms.map(function (c) { return { name: c.n || '', role: '', text: c.m }; }));
     var logo = imgUrl(S.slots.logo, 'icons/logo.png'), hero = imgUrl(S.slots.hero, '');
     var donateImg = imgUrl(S.slots.donate, '');
@@ -375,10 +434,12 @@
     $('#brand').innerHTML = '<img src="' + logo + '" alt=""><span>' + esc(B.name) + '</span>';
     var nav = [['programmes', 'nav_work', P.length], ['impact', 'nav_impact', 1], ['give', 'nav_give', 1], ['gallery', 'nav_gallery', gal.length], ['voices', 'nav_voices', voices.length], ['videos', 'nav_videos', vids.length], ['how', 'nav_how', 1], ['visit', 'nav_visit', 1]].filter(function (n) { return n[2]; });
     var megaTrig = '<button class="mg-trig" id="mgTrig" aria-expanded="false" aria-controls="mega">' + esc(sec('nav_work')) + I.chev + '</button>';
+    var grp = { programmes: 'mg_explore', impact: 'mg_discover', give: 'mg_take' };
     $('#nav').innerHTML = nav.map(function (n) {
-      if (n[0] === 'programmes') return megaTrig;
-      return '<a href="#' + n[0] + '">' + esc(sec(n[1])) + '</a>';
-    }).join('') + '<div class="nav-tools">' + themeSeg() + '</div>';
+      var head = grp[n[0]] ? '<span class="nav-h" aria-hidden="true">' + esc(sec(grp[n[0]])) + '</span>' : '';
+      if (n[0] === 'programmes') return head + megaTrig;
+      return head + '<a href="#' + n[0] + '">' + esc(sec(n[1])) + '</a>';
+    }).join('');
 
     var megaVis = '<div class="mg-vis" id="mgVis"></div>';
     $('#mega').innerHTML =
@@ -497,16 +558,23 @@
   function setupMega() {
     var trig = $('#mgTrig'), m = $('#mega'), nb = $('#navbar');
     if (!trig || !m) return;
+    var inT = null, outT = null;
     if (!phone) {
-      trig.onmouseenter = function () { clearTimeout(megaT); megaOpen(true); };
-      nb.onmouseleave = function () { clearTimeout(megaT); megaT = setTimeout(function () { megaOpen(false); }, 220); };
-      nb.onmouseenter = function () { clearTimeout(megaT); };
+      trig.onpointerenter = function () { clearTimeout(outT); inT = setTimeout(function () { megaOpen(true); }, 90); };
+      nb.onpointerenter = function () { clearTimeout(outT); };
+      nb.onpointerleave = function () { clearTimeout(inT); outT = setTimeout(function () { megaOpen(false); }, 280); };
     }
     trig.onclick = function (e) { e.preventDefault(); megaOpen(m.hidden); };
-    $$('.mg-list a', m).forEach(function (a) {
-      a.onmouseenter = function () { megaVis(+a.dataset.mi); };
+    trig.onkeydown = function (e) { if (e.key === 'ArrowDown') { e.preventDefault(); megaOpen(true); var f = $('.mg-list a', m); if (f) f.focus(); } };
+    var links = $$('.mg-list a', m);
+    links.forEach(function (a, i) {
+      a.onpointerenter = function () { megaVis(+a.dataset.mi); };
       a.onfocus = function () { megaVis(+a.dataset.mi); };
       a.onclick = function () { megaOpen(false); };
+      a.onkeydown = function (e) {
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') { e.preventDefault(); links[(i + (e.key === 'ArrowDown' ? 1 : -1) + links.length) % links.length].focus(); }
+        if (e.key === 'Escape') { megaOpen(false); trig.focus(); }
+      };
     });
     $$('.mg-plain a', m).forEach(function (a) { a.onclick = function () { megaOpen(false); }; });
     var go = $('#mgVis'); if (go) go.onclick = function (e) { var a = e.target.closest('[data-mo]'); if (a) { megaOpen(false); openDlg(+a.dataset.mo); } };
@@ -533,14 +601,20 @@
       if (!has) { sigE.textContent = sec('c_e3'); sigE.hidden = false; valid = false; } else sigE.hidden = true;
       if (!cc.checked) { er(cc, cce, sec('c_e2')); valid = false; } else ok(cc, cce);
       if (!valid) { if (MT.sfx) MT.sfx('error'); (!cm.value.trim() ? cm : !has ? cv : cc).focus(); return; }
-      var sig = cv.toDataURL('image/png');
+      var sig = cv.toDataURL('image/png'), nm = $('#cn').value.trim(), msg = cm.value.trim();
+      var done = function () {
+        f.reset(); has = false; var r = cv.getBoundingClientRect(); ctx.clearRect(0, 0, r.width, r.height);
+        if (MT.banner) MT.banner({ kind: 'ok', title: sec('c_ok').split('.')[0], body: sec('c_ok'), sound: 'comment' });
+      };
+      if (MTDB.on) {
+        MTDB.submitComment({ name: nm, message: msg, signature: sig }).then(function () { track('comment', 'visitor'); done(); })
+          .catch(function () { if (MT.banner) MT.banner({ kind: 'error', title: 'Not sent', body: 'Check your connection and try again.' }); });
+        return;
+      }
       var l = jget('mt-comments', []);
-      l.unshift({ id: uid(), n: $('#cn').value.trim(), m: cm.value.trim(), d: Date.now(), ok: false, sig: sig, consent: true });
+      l.unshift({ id: uid(), n: nm, m: msg, d: Date.now(), ok: false, sig: sig, consent: true });
       LS.set('mt-comments', JSON.stringify(l.slice(0, 300)));
-      track('comment', 'visitor');
-      f.reset(); has = false; var r = cv.getBoundingClientRect(); ctx.clearRect(0, 0, r.width, r.height);
-      if (MT.banner) MT.banner({ title: sec('c_ok').split('.')[0], body: sec('c_ok'), kind: 'comment' });
-      else toast(sec('c_ok'), 'ok');
+      track('comment', 'visitor'); done();
     };
   }
 
@@ -552,7 +626,7 @@
       var btn = $('.play', el), bar = $('.bar', el);
       btn.onclick = function () {
         if (cur === a.id && !au.paused) { au.pause(); if (MT.sfx) MT.sfx('media', 'pause'); return; }
-        if (cur !== a.id) { au.src = urlOf(a); cur = a.id; a.plays = (a.plays || 0) + 1; mPut(a); track('play', a.title); }
+        if (cur !== a.id) { au.src = urlOf(a); cur = a.id; a.plays = (a.plays || 0) + 1; if (MTDB.on) MTDB.incrementPlays(a.id); else mPut(a); track('play', a.title); }
         au.play(); if (MT.sfx) MT.sfx('media', 'play'); syncV();
       };
       bar.onclick = function (e) { if (cur === a.id && au.duration) { var r = bar.getBoundingClientRect(); au.currentTime = (e.clientX - r.left) / r.width * au.duration; } };
@@ -572,11 +646,45 @@
   /* programme details dialog. Also used by the admin's "open as visitor" button. */
   function openDlg(i) {
     var p = get('programmes')[i]; if (!p) return;
-    $('#dlgbody').innerHTML = '<button class="ibtn x" aria-label="Close" id="dx">' + I.close + '</button><div class="ico">' + svgp(PICO[i % 6]) + '</div><h2 style="font-size:1.9rem">' + esc(p.t) + '</h2><p class="muted" style="font-size:1.05rem">' + esc(p.more || p.d) + '</p><a class="btn btn-p" href="#give" id="dgo">' + esc(get('hero').cta1) + '</a>';
+    $('#dlgbody').innerHTML = '<button class="ibtn x" aria-label="Close" id="dx">' + I.close + '</button><div class="ico">' + svgp(PICO[i % 6]) + '</div><h2 style="font-size:1.9rem">' + esc(p.t) + '</h2><p class="muted" style="font-size:1.05rem">' + esc(p.more || p.d) + '</p><a class="btn btn-p" href="#give" id="dgo">' + esc(get('hero').cta1) + '</a>' + '<div class="dlg-acts"><button class="btn btn-ghost btn-sm" id="dshare" type="button">Share</button><button class="btn btn-ghost btn-sm" id="dprint" type="button">Print</button></div>';
     var d = $('#dlg'); if (!d.open) d.showModal();
     track('prog', p.t);
     $('#dx').onclick = function () { d.close(); };
     $('#dgo').onclick = function () { d.close(); };
+    $('#dshare').onclick = function () {
+      var url = location.href.split('#')[0] + '#programmes';
+      if (navigator.share) navigator.share({ title: p.t, text: p.d, url: url }).catch(function () {});
+      else if (navigator.clipboard) navigator.clipboard.writeText(url).then(function () { toast('Link copied', 'ok'); }, function () { toast('Could not copy the link', 'err'); });
+      else toast('Sharing is not available here', 'err');
+    };
+    $('#dprint').onclick = function () { window.print(); };
+  }
+
+  function savePrefs() {
+    if (!(window.MTDB && MTDB.on)) return;
+    MTDB.savePrefs({ lang: lang, theme: LS.get('mt-theme') || 'system' });
+  }
+  function syncDarkBtn() {
+    var db = $('#darkbtn'); if (!db) return;
+    var t = document.documentElement.dataset.theme;
+    var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+    db.innerHTML = dark ? I.sun : I.moon;
+    db.setAttribute('aria-label', dark ? 'Switch to light mode' : 'Switch to dark mode');
+  }
+  /* pointer feedback (mouse and trackpad only): a soft light that follows the cursor on cards, and buttons that lean toward it */
+  function setupFx() {
+    if (phone || !window.matchMedia('(pointer: fine)').matches) return;
+    document.addEventListener('pointermove', function (e) {
+      var t = e.target; if (!t || !t.closest) return;
+      var c = t.closest('.card');
+      if (c) { var r = c.getBoundingClientRect(); c.style.setProperty('--mx', (e.clientX - r.left) + 'px'); c.style.setProperty('--my', (e.clientY - r.top) + 'px'); }
+      var b = t.closest('.btn-p, .btn-b');
+      if (b) { var rb = b.getBoundingClientRect(); b.style.translate = ((e.clientX - (rb.left + rb.width / 2)) * .16).toFixed(1) + 'px ' + ((e.clientY - (rb.top + rb.height / 2)) * .2).toFixed(1) + 'px'; }
+    }, { passive: true });
+    document.addEventListener('pointerout', function (e) {
+      var b = e.target.closest && e.target.closest('.btn-p, .btn-b');
+      if (b && !b.contains(e.relatedTarget)) b.style.translate = '';
+    }, true);
   }
 
   /* header: hide on scroll down, show on scroll up or when the pointer reaches the top edge */
@@ -597,6 +705,8 @@
     else if (d < -4) setHidden(false);
     var m = document.documentElement.scrollHeight - innerHeight;
     document.documentElement.style.setProperty('--p', m > 0 ? (y / m).toFixed(4) : 0);
+    var tt = $('#totop');
+    if (tt) { tt.classList.toggle('on', y > 700); tt.style.setProperty('--p', document.documentElement.style.getPropertyValue('--p') || 0); }
     var mo = document.documentElement.dataset.motion, fr = $('.frame');
     if (fr && (mo === 'rich' || mo === 'max')) fr.style.setProperty('--py', Math.min(y, 800) * (mo === 'max' ? .14 : .05));
     var mt = $('#mtext');
@@ -649,13 +759,25 @@
     applyColors: applyColors, applyTheme: applyTheme, applyLook: applyLook, look: look, setLook: setLook, loadFont: loadFont, focusStyle: focusStyle,
     themeSeg: themeSeg, placeSeg: placeSeg, langMenu: langMenu, labelOf: labelOf, reduce: reduce, phone: phone, IS_PREVIEW: IS_PREVIEW,
     cardHtml: cardHtml, storyHtml: storyHtml, openDlg: openDlg, parseVideo: parseVideo, track: track, events: events, visits: visits, dayKey: dayKey,
-    renderSite: renderSite, route: route, adminOn: adminOn, sec: sec, SECS: SECS, setHidden: setHidden, deviceId: deviceId, svgp: svgp, PICO: PICO
+    renderSite: renderSite, route: route, adminOn: adminOn, syncDarkBtn: syncDarkBtn, savePrefs: savePrefs, uuid: uuid,
+    comments: function () { return window.__MT_ADMIN_COMMENTS || jget('mt-comments', []); }, sec: sec, SECS: SECS, setHidden: setHidden, deviceId: deviceId, svgp: svgp, PICO: PICO
   };
 
-  openDB().then(loadMedia).then(function () {
+  openDB().then(loadRemote).then(loadMedia).then(function () {
     applyColors();
     applyLook();
     $('#themepill').innerHTML = themeSeg();
+    syncDarkBtn();
+    var dbt = $('#darkbtn');
+    if (dbt) dbt.onclick = function () {
+      var t = document.documentElement.dataset.theme;
+      var dark = t === 'dark' || (t !== 'light' && matchMedia('(prefers-color-scheme: dark)').matches);
+      applyTheme(dark ? 'light' : 'dark');
+    };
+    setupFx();
+    var tt = $('#totop');
+    if (tt) tt.onclick = function () { scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' }); };
+    document.addEventListener('click', function (e) { var m = $('#mega'); if (m && !m.hidden && !e.target.closest('#navbar')) megaOpen(false); });
     applyTheme(LS.get('mt-theme') || 'system');
     document.documentElement.lang = lang;
     langMenu();

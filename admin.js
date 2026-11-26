@@ -96,20 +96,109 @@
     return '<div class="ccards">' + (items || '<p class="muted">Nothing here yet.</p>') + '</div><div style="margin-top:12px"><button type="button" class="btn btn-sm btn-ghost" data-add="' + g + '">+ Add ' + esc(noun) + '</button></div>';
   }
 
-  /* ---------- auth (BACKEND HOOK) ---------- */
+  /* ---------- auth: Supabase accounts when connected; a local placeholder otherwise ---------- */
+  var DB = function () { return window.MTDB; };
   function signedIn() { return MT.adminOn(); }
-  function adminLogin() {
-    // BACKEND HOOK: replace with a real sign-in request. For now any input (even empty) enters.
-    window.__MT_ADMIN = true;
-    try { sessionStorage.setItem('mt-admin', '1'); } catch (x) {}
-    location.hash = '#/admin/overview';
+  function setMsg(id, msg) { var e = $('#' + id); if (!e) return; e.textContent = msg || ''; e.hidden = !msg; }
+  function showLogin(mode) {
+    var setup = mode === 'setup';
+    $('#aform').hidden = setup; $('#sform').hidden = !setup;
+    $('#ltitle').textContent = setup ? 'Create the admin account' : 'Sign in';
+    $('#lsub').textContent = setup ? 'First visit. This account becomes the owner of the site.' : 'Miale ya Tumaini admin';
+  }
+  function grant() { window.__MT_ADMIN = true; try { sessionStorage.setItem('mt-admin', '1'); } catch (x) {} }
+  function revoke() { window.__MT_ADMIN = false; try { sessionStorage.removeItem('mt-admin'); } catch (x) {} }
+  function afterSignIn() { grant(); location.hash = '#/admin/overview'; enterAdmin(); }
+  function checkAccess() {
+    return DB().isAdmin().then(function (ok) {
+      if (ok) return true;
+      return DB().adminExists().then(function (exists) { showLogin(exists ? 'signin' : 'setup'); return false; });
+    }).catch(function () { showLogin('signin'); return false; });
+  }
+  function submitSignIn(e) {
+    e.preventDefault(); setMsg('aerr', '');
+    if (!DB().on) { afterSignIn(); return; }
+    DB().signIn($('#ae').value.trim(), $('#ap').value)
+      .then(function () { return DB().isAdmin(); })
+      .then(function (ok) {
+        if (ok) return afterSignIn();
+        return DB().adminExists().then(function (exists) {
+          if (exists) throw new Error('This account is not an admin of this site.');
+          return DB().claimAdmin().then(function (c) { if (!c) throw new Error('An admin was just created. Sign in with that account.'); afterSignIn(); });
+        });
+      })
+      .catch(function (err) { setMsg('aerr', (err && err.message) || 'Sign-in failed.'); MT.sfx('error'); });
+  }
+  function submitSetup(e) {
+    e.preventDefault(); setMsg('serr', ''); setMsg('sinfo', '');
+    var em = $('#se').value.trim(), p1 = $('#sp').value, p2 = $('#sp2').value;
+    if (!/^\S+@\S+\.\S+$/.test(em)) { setMsg('serr', 'Enter a valid email address.'); MT.sfx('error'); return; }
+    if (p1.length < 8) { setMsg('serr', 'Use at least 8 characters.'); MT.sfx('error'); return; }
+    if (p1 !== p2) { setMsg('serr', 'The two passwords do not match.'); MT.sfx('error'); return; }
+    DB().signUp(em, p1).then(function (res) {
+      if (!res || !res.session) { setMsg('sinfo', 'Check your email for the confirmation link, then come back and sign in here.'); return; }
+      return DB().claimAdmin().then(function (c) { if (c) afterSignIn(); else { setMsg('serr', 'An admin already exists. Sign in instead.'); showLogin('signin'); } });
+    }).catch(function (err) { setMsg('serr', (err && err.message) || 'Could not create the account.'); MT.sfx('error'); });
   }
   function signOut() {
-    window.__MT_ADMIN = false;
-    try { sessionStorage.removeItem('mt-admin'); } catch (x) {}
+    revoke();
+    if (DB().on) DB().signOut().catch(function () {});
     location.hash = '#/admin';
     MT.toast('Signed out');
   }
+  function loadAdminData() {
+    if (!DB().on) return Promise.resolve();
+    return Promise.all([
+      DB().stats().then(function (s) { window.__MT_STATS = s; }).catch(function () {}),
+      DB().listComments(true).then(function (rows) {
+        window.__MT_ADMIN_COMMENTS = rows.map(function (r) { return { id: r.id, n: r.name || '', m: r.message, ok: !!r.approved, d: Date.parse(r.created_at), sig: r.signature || '' }; });
+      }).catch(function () {})
+    ]);
+  }
+
+  /* command palette: Ctrl+K or Cmd+K */
+  var CMD = [];
+  function openPalette() {
+    if (!MT.adminOn()) return;
+    if (!$('#cmdk')) {
+      var d = document.createElement('dialog'); d.id = 'cmdk'; d.setAttribute('aria-label', 'Search the admin');
+      d.innerHTML = '<div class="dlg cmdk-box"><input class="in" id="cmdkq" placeholder="Go to a page or action" aria-label="Search the admin" autocomplete="off"><ul class="cmdk-list" id="cmdkl" role="listbox"></ul></div>';
+      document.body.appendChild(d);
+      d.addEventListener('click', function (e) { if (e.target === d) d.close(); });
+      $('#cmdkq').addEventListener('input', function () { renderCmd(this.value); });
+      $('#cmdkl').addEventListener('click', function (e) { var li = e.target.closest('li[data-go]'); if (li) runCmd(li.dataset.go); });
+      d.addEventListener('keydown', function (e) {
+        var items = $$('#cmdkl li[data-go]'), i = items.indexOf($('#cmdkl li.on'));
+        if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+          e.preventDefault();
+          var n = Math.max(0, Math.min(items.length - 1, i + (e.key === 'ArrowDown' ? 1 : -1)));
+          items.forEach(function (x, k) { x.classList.toggle('on', k === n); });
+        }
+        if (e.key === 'Enter') { e.preventDefault(); var on = $('#cmdkl li.on'); if (on) runCmd(on.dataset.go); }
+      });
+    }
+    CMD = TABS.map(function (t) { return { label: t[1], sub: groupOf(t[0]), go: 'tab:' + t[0] }; }).concat([
+      { label: 'Preview the site', sub: 'Action', go: 'preview' }, { label: 'View the website', sub: 'Action', go: 'site' }, { label: 'Sign out', sub: 'Action', go: 'out' }]);
+    $('#cmdkq').value = '';
+    renderCmd('');
+    $('#cmdk').showModal();
+    setTimeout(function () { $('#cmdkq').focus(); }, 30);
+  }
+  function renderCmd(q) {
+    q = (q || '').trim().toLowerCase();
+    var list = CMD.filter(function (c) { return (c.label + ' ' + c.sub).toLowerCase().indexOf(q) >= 0; });
+    $('#cmdkl').innerHTML = list.map(function (c, i) { return '<li role="option" data-go="' + esc(c.go) + '" class="' + (i === 0 ? 'on' : '') + '"><span>' + esc(c.label) + '</span><small>' + esc(c.sub) + '</small></li>'; }).join('') || '<li class="muted">Nothing matches.</li>';
+  }
+  function runCmd(go) {
+    $('#cmdk').close();
+    if (go.indexOf('tab:') === 0) location.hash = '#/admin/' + go.slice(4);
+    else if (go === 'preview') openPreview('desktop');
+    else if (go === 'site') location.hash = '#/';
+    else if (go === 'out') signOut();
+  }
+  document.addEventListener('keydown', function (e) {
+    if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k' && MT.adminOn()) { e.preventDefault(); openPalette(); }
+  });
 
   /* ---------- shell ---------- */
   function build() {
@@ -117,10 +206,14 @@
     var A = $('#admin');
     A.innerHTML =
       '<section class="alogin" id="alogin"><a class="ibtn backbtn" href="#/" aria-label="Back to the website">' + I.close + '</a>' +
-      '<div class="card lcard"><img src="icons/logo.png" alt="" id="lgimg"><h2 style="font-size:1.8rem;margin:0">Sign in</h2><p class="muted" style="margin:0">Miale ya Tumaini admin</p>' +
-      '<form id="aform" class="form" novalidate><div class="field"><label for="ae">Email</label><input class="in" id="ae" type="text" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false"></div>' +
+      '<div class="card lcard"><img src="icons/logo.png" alt="" id="lgimg"><h2 id="ltitle" style="font-size:1.8rem;margin:0">Sign in</h2><p class="muted" id="lsub" style="margin:0">Miale ya Tumaini admin</p>' +
+      '<form id="aform" class="form" novalidate><div class="field"><label for="ae">Email</label><input class="in" id="ae" type="email" inputmode="email" autocomplete="username" autocapitalize="off" spellcheck="false"></div>' +
       '<div class="field"><label for="ap">Password</label><div class="pwbox"><input class="in" id="ap" type="password" autocomplete="current-password" style="padding-right:48px"><button type="button" class="eye" id="eye" aria-label="Show password" aria-pressed="false">' + I.eye + '</button></div></div>' +
-      '<button class="btn btn-p btn-wide" type="submit">Sign in</button></form></div></section>' +
+      '<p class="err" id="aerr" hidden></p><button class="btn btn-p btn-wide" type="submit">Sign in</button></form>' +
+      '<form id="sform" class="form" novalidate hidden><div class="field"><label for="se">Admin email</label><input class="in" id="se" type="email" autocomplete="username" autocapitalize="off"></div>' +
+      '<div class="field"><label for="sp">Choose a password (8 or more characters)</label><input class="in" id="sp" type="password" autocomplete="new-password"></div>' +
+      '<div class="field"><label for="sp2">Repeat the password</label><input class="in" id="sp2" type="password" autocomplete="new-password"></div>' +
+      '<p class="err" id="serr" hidden></p><p class="muted" id="sinfo" style="margin:0;font-size:.9rem" hidden></p><button class="btn btn-p btn-wide" type="submit">Create the admin account</button></form></div></section>' +
       '<div class="shell" id="ashell" hidden>' +
       '<header class="mtop"><button type="button" class="ibtn" id="menuBtn" aria-label="Open menu" aria-controls="side" aria-expanded="false">' + ic(P.menu) + '</button>' +
       '<span class="ttl" id="mttl"></span><a class="ibtn" href="#/" aria-label="View the website" title="View the website">' + ic(P.site) + '</a>' +
@@ -137,7 +230,8 @@
       }).join('') +
       '<span class="sp"></span><div class="sofoot"><button type="button" class="tab signout" id="signout">' + ic(P.out) + '<span>Sign out</span></button></div></aside>' +
       '<main class="amain" id="apanel"></main></div>';
-    $('#aform').onsubmit = function (e) { e.preventDefault(); adminLogin(); };
+    $('#aform').onsubmit = submitSignIn;
+    $('#sform').onsubmit = submitSetup;
     $('#eye').onclick = function () { var p = $('#ap'), s = p.type === 'password'; p.type = s ? 'text' : 'password'; this.innerHTML = s ? I.eyeoff : I.eye; this.setAttribute('aria-pressed', s); };
     $('#signout').onclick = signOut;
     $('#mout').onclick = signOut;
@@ -166,15 +260,21 @@
 
   function enterAdmin() {
     build();
-    var h = location.hash, tab = h.split('/')[2] || '';
-    var show = signedIn();
-    $('#alogin').hidden = show; $('#ashell').hidden = !show;
-    if (!show) return;
-    if (!TITLES[tab]) { location.hash = '#/admin/overview'; return; }
-    $$('.tab[data-tab]').forEach(function (a) { a.classList.toggle('act', a.dataset.tab === tab); if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
-    $('#alogo').src = MT.imgUrl(S().slots.logo, 'icons/logo.png');
-    setDrawer(false);
-    panel(tab);
+    var tab = location.hash.split('/')[2] || '';
+    var shell = $('#ashell'), login = $('#alogin');
+    var openShell = function () {
+      if (!TITLES[tab]) { location.hash = '#/admin/overview'; return; }
+      login.hidden = true; shell.hidden = false;
+      $$('.tab[data-tab]').forEach(function (a) { a.classList.toggle('act', a.dataset.tab === tab); if (a.dataset.tab === tab) a.setAttribute('aria-current', 'page'); else a.removeAttribute('aria-current'); });
+      $('#alogo').src = MT.imgUrl(S().slots.logo, 'icons/logo.png');
+      setDrawer(false);
+      panel(tab);
+      loadAdminData().then(function () { if (curTab === tab) panel(tab); });
+    };
+    var showLoginScreen = function () { login.hidden = false; shell.hidden = true; };
+    if (!DB().on) { if (signedIn()) openShell(); else { showLogin('signin'); showLoginScreen(); } return; }
+    if (signedIn()) { openShell(); return; }
+    checkAccess().then(function (ok) { if (ok) { grant(); openShell(); } else showLoginScreen(); });
   }
 
   function editingNote() {
@@ -248,7 +348,7 @@
 
   /* Overview: stats, mini calendar, rankings, a guided tour until it is dismissed */
   function overviewHtml() {
-    var log = MT.visits(), ev = MT.events(), cms = MT.jget('mt-comments', []);
+    var log = MT.visits(), ev = MT.events(), cms = MT.comments();
     var now = Date.now(), tk = MT.dayKey(now), cnt = {};
     log.forEach(function (v) { var k = MT.dayKey(v.t); cnt[k] = (cnt[k] || 0) + 1; });
     var week = 0; for (var i = 0; i < 7; i++) week += cnt[MT.dayKey(now - i * 864e5)] || 0;
@@ -383,7 +483,7 @@
 
   /* ---------- stories and comments ---------- */
   function storiesHtml() {
-    var cl = MT.jget('mt-comments', []);
+    var cl = MT.comments();
     var cards = cl.map(function (c) {
       return '<article class="item' + (curComment === c.id ? ' sel' : '') + '"><div class="item-h"><div><b>' + esc(c.n || 'No name') + '</b> <span class="meta">' + new Date(c.d).toLocaleString('en-KE') + '</span></div><span class="tag ' + (c.ok ? 'on' : 'warn') + '">' + (c.ok ? 'On the site' : 'Waiting') + '</span></div>' +
         '<p style="margin:0">' + esc(c.m) + '</p>' +
@@ -457,13 +557,13 @@
       '<div class="field"><label for="ud">About this recording</label><textarea id="ud" rows="3" maxlength="400"></textarea></div><p class="err" id="ue" hidden></p><button class="btn btn-p btn-sm" type="submit" style="justify-self:start">Upload recording</button></form>';
     var list = al.map(function (x) {
       var t = TRIM[x.id] || { s: 0, e: x.dur || 0 };
-      return '<article class="item" data-audio-item="' + x.id + '"><div class="item-h"><span class="idx">' + esc(x.title) + '</span><span class="meta">' + MT.fmt(x.dur) + (x.orig ? ' · cut' : '') + '</span></div>' +
+      return '<article class="item" data-audio-item="' + x.id + '"><div class="item-h"><span class="idx">' + esc(x.title) + '</span><span class="meta">' + MT.fmt(x.dur) + ((x.orig || x.origPath) ? ' · cut' : '') + '</span></div>' +
         '<div class="wave" data-wave="' + x.id + '" aria-label="Waveform: click to move the play position"><canvas></canvas><span class="sel" style="left:' + (x.dur ? t.s / x.dur * 100 : 0) + '%;width:' + (x.dur ? (t.e - t.s) / x.dur * 100 : 100) + '%"></span><span class="head" style="left:0%"></span></div>' +
         '<div class="trimrow"><div class="field"><label for="ts' + x.id + '">Start: <output id="tso' + x.id + '">' + MT.fmt(t.s) + '</output></label><input type="range" id="ts' + x.id + '" min="0" max="' + (x.dur || 0) + '" step="0.1" value="' + t.s + '" data-trim="' + x.id + '|s"></div>' +
         '<div class="field"><label for="te' + x.id + '">End: <output id="teo' + x.id + '">' + MT.fmt(t.e) + '</output></label><input type="range" id="te' + x.id + '" min="0" max="' + (x.dur || 0) + '" step="0.1" value="' + t.e + '" data-trim="' + x.id + '|e"></div></div>' +
         '<div class="aud-tools"><button type="button" class="btn btn-sm btn-ghost" data-playsel="' + x.id + '">' + ic(P.play) + ' Play selection</button>' +
         '<button type="button" class="btn btn-sm btn-ghost" data-cutau="' + x.id + '">' + ic(P.scissors) + ' Cut to selection</button>' +
-        (x.orig ? '<button type="button" class="btn btn-sm btn-ghost" data-restau="' + x.id + '">' + ic(P.undo) + ' Restore original</button>' : '') +
+        ((x.orig || x.origPath) ? '<button type="button" class="btn btn-sm btn-ghost" data-restau="' + x.id + '">' + ic(P.undo) + ' Restore original</button>' : '') +
         '<span class="time-lbl">Keeps <b>' + MT.fmt(t.e - t.s) + '</b></span></div>' +
         '<div class="mini-stats"><span>Plays <b>' + (x.plays || 0) + '</b></span><span>Listening <b>' + MT.fmt((x.dur || 0) * (x.plays || 0)) + '</b></span><span>Date <b>' + new Date(x.date).toLocaleDateString('en-KE') + '</b></span></div>' +
         '<div class="row2"><div class="field"><label>Title</label><input class="in" data-au="' + x.id + '" data-f="title" value="' + esc(x.title) + '"></div><div class="field"><label>Speaker</label><input class="in" data-au="' + x.id + '" data-f="speaker" value="' + esc(x.speaker || '') + '"></div></div>' +
@@ -478,9 +578,9 @@
   var DEC = {};
   function decodeItem(x) {
     if (DEC[x.id]) return Promise.resolve(DEC[x.id]);
-    var C = window.AudioContext || window.webkitAudioContext; if (!C || !x.blob) return Promise.resolve(null);
+    var C = window.AudioContext || window.webkitAudioContext; if (!C || (!x.blob && !x.url)) return Promise.resolve(null);
     var c = new C();
-    return x.blob.arrayBuffer().then(function (b) { return c.decodeAudioData(b); }).then(function (buf) {
+    return (x.blob ? x.blob.arrayBuffer() : fetch(x.url).then(function (r) { return r.arrayBuffer(); })).then(function (b) { return c.decodeAudioData(b); }).then(function (buf) {
       var ch = buf.getChannelData(0), N = 260, step = Math.max(1, Math.floor(ch.length / N)), peaks = [];
       for (var i = 0; i < N; i++) { var mx = 0; for (var j = 0; j < step; j++) { var v = Math.abs(ch[i * step + j] || 0); if (v > mx) mx = v; } peaks.push(mx); }
       DEC[x.id] = { peaks: peaks, buf: buf };
@@ -530,7 +630,7 @@
       if (!d) { MT.toast('This file could not be read to cut it.', 'err'); return; }
       if (t.e - t.s < .2) { MT.toast('Choose a longer part to keep.', 'err'); return; }
       var wav = wavFrom(d.buf, t.s, Math.min(t.e, d.buf.duration));
-      if (!x.orig) x.orig = x.blob;
+      if (MTDB.on) { x.origPath = x.origPath || x.path; } else if (!x.orig) { x.orig = x.blob; }
       x.blob = wav; x.dur = t.e - t.s; x.mime = 'audio/wav';
       delete DEC[id]; delete AUD[id];
       TRIM[id] = { s: 0, e: x.dur };
@@ -538,7 +638,16 @@
     });
   }
   function restoreAudio(id) {
-    var x = MT.byId(id); if (!x || !x.orig) return;
+    var x = MT.byId(id); if (!x) return;
+    if (MTDB.on) {
+      if (!x.origPath) return;
+      MTDB.updateMedia(id, { path: x.origPath, orig_path: null, mime: null }).then(MT.loadMedia).then(function () {
+        delete DEC[id]; delete AUD[id]; TRIM[id] = { s: 0, e: 0 };
+        MT.toast('Original restored', 'ok'); panel('audio');
+      }).catch(function () { MT.toast('Could not restore. Check the connection.', 'err'); });
+      return;
+    }
+    if (!x.orig) return;
     x.blob = x.orig; delete x.orig; delete DEC[id]; delete AUD[id];
     TRIM[id] = { s: 0, e: 0 };
     MT.mPut(x).then(MT.loadMedia).then(function () { MT.toast('Original restored'); panel('audio'); });
@@ -558,7 +667,7 @@
     var pr = new Audio(), u = URL.createObjectURL(UPL);
     function save(d) {
       URL.revokeObjectURL(u);
-      MT.mPut({ id: MT.uid(), kind: 'audio', title: $('#ut').value.trim(), speaker: $('#us').value.trim(), lang: $('#ul').value.trim(), desc: $('#ud').value.trim(), date: Date.now(), dur: d, plays: 0, blob: UPL })
+      MT.mPut({ id: MT.uid(), kind: 'audio', title: $('#ut').value.trim(), speaker: $('#us').value.trim(), lang: $('#ul').value.trim(), desc: $('#ud').value.trim(), date: Date.now(), dur: d, plays: 0, consent: true, blob: UPL })
         .then(MT.loadMedia).then(function () { UPL = null; MT.toast('Recording uploaded', 'ok'); panel('audio'); });
     }
     pr.preload = 'metadata';
@@ -666,7 +775,7 @@
       panelBox('Guided tour', '<p class="muted" style="margin:0">A four-step walk through the admin. It opens on Statistics until it is finished or skipped.</p><div><button type="button" class="btn btn-sm btn-ghost" data-tour="restart">Show the tour again</button></div>');
   }
   function dataHtml() {
-    var cm = MT.jget('mt-comments', []), ev = MT.events(), vis = MT.visits(), media = MT.MEDIA();
+    var cm = MT.comments(), ev = MT.events(), vis = MT.visits(), media = MT.MEDIA();
     return panelBox('Export everything', '<p class="muted" style="margin:0">One file with your content, settings, comments, the event log and a list of every photo and recording. Recording files are listed by name and not included, since they are large. Use this as the handover file when the backend is connected.</p>' +
       '<table class="datatable"><tbody><tr><td>Comments</td><td><b>' + cm.length + '</b></td></tr><tr><td>Events logged</td><td><b>' + ev.length + '</b></td></tr><tr><td>Visits logged</td><td><b>' + vis.length + '</b></td></tr><tr><td>Photos and recordings</td><td><b>' + media.length + '</b></td></tr></tbody></table>' +
       '<div><button type="button" class="btn btn-sm btn-p" data-export="1">Download export (JSON)</button></div>') +
@@ -674,7 +783,7 @@
   }
   function exportJson() {
     var data = {
-      exported: new Date().toISOString(), site: 'Miale ya Tumaini', content: MT.S(), comments: MT.jget('mt-comments', []),
+      exported: new Date().toISOString(), site: 'Miale ya Tumaini', content: MT.S(), comments: MT.comments(),
       events: MT.events(), visits: MT.visits(),
       media: MT.MEDIA().map(function (m) { return { id: m.id, kind: m.kind, title: m.title || '', cat: m.cat || null, consent: !!m.consent, date: m.date, dur: m.dur || null, plays: m.plays || 0, size: m.blob ? m.blob.size : 0, type: m.blob ? m.blob.type : '' }; })
     };
@@ -707,7 +816,7 @@
       }).join('') + '</div></div>';
     } else if (curTab === 'stories') {
       if (curComment) {
-        var cm = MT.jget('mt-comments', []).filter(function (c) { return c.id === curComment; })[0];
+        var cm = MT.comments().filter(function (c) { return c.id === curComment; })[0];
         h = cm ? '<div class="pv-site">' + MT.storyHtml({ name: cm.n || '', text: cm.m, plain: true }) + '</div><p class="muted" style="margin:0;font-size:.85rem">How it looks once approved. The signature stays private.</p>' : emptyMsg();
       } else {
         var T = get('testimonials'), t = T[curStory];
@@ -741,14 +850,14 @@
       var s = S(); s.col = s.col || {}; s.col[el.dataset.col] = el.value; MT.saveS(); MT.applyColors(); MT.flash();
       if (curTab === 'brand') { var sel = $('#apanel'); }
     } else if (el.dataset.au) {
-      var m = MT.byId(+el.dataset.au);
+      var m = MT.byId(el.dataset.au);
       if (m) { m[el.dataset.f] = el.value; MT.mPut(m); MT.flash(); }
     } else if (el.dataset.zoom) {
       var key = el.dataset.zoom, f = fget(key); f.z = +el.value; fset(key, f);
       el.parentNode.querySelector('output').textContent = Math.round(f.z * 100) + '%';
       updateStage(key);
     } else if (el.dataset.trim) {
-      var q = el.dataset.trim.split('|'), id = +q[0], tr = TRIM[id] || (TRIM[id] = { s: 0, e: 0 });
+      var q = el.dataset.trim.split('|'), id = q[0], tr = TRIM[id] || (TRIM[id] = { s: 0, e: 0 });
       tr[q[1]] = +el.value;
       if (tr.s > tr.e) { if (q[1] === 's') tr.e = tr.s; else tr.s = tr.e; }
       var x = MT.byId(id), out = $('#' + (q[1] === 's' ? 'tso' : 'teo') + id);
@@ -770,8 +879,8 @@
     var el = e.target;
     if (el.dataset.up && el.files.length) upImgs(el.dataset.up, el.files);
     else if (el.dataset.audioInput) pickAudio(el.files[0]);
-    else if (el.dataset.consent) setImg(+el.dataset.consent, { consent: el.checked }, 'Consent saved');
-    else if (el.dataset.movecat) moveImg(+el.dataset.movecat, el.value);
+    else if (el.dataset.consent) setImg(el.dataset.consent, { consent: el.checked }, 'Consent saved');
+    else if (el.dataset.movecat) moveImg(el.dataset.movecat, el.value);
     else if (el.dataset.sev) {
       var sd = MT.clone(MT.look().sound); sd.ev = sd.ev || {}; sd.ev[el.dataset.sev] = el.checked; MT.setLook('sound', sd); MT.toast('Saved', 'ok');
     } else if (el.dataset.look === 'glass') { MT.setLook('glass', el.checked); panel('shapes'); }
@@ -782,28 +891,43 @@
     var b = e.target.closest('button, a'); if (!b) return;
     var tab = curTab;
     if (b.dataset.add) { var v = MT.clone(get(b.dataset.add)); v.push(MT.clone(TPL[b.dataset.add])); MT.setG(b.dataset.add, v); if (b.dataset.add === 'programmes') curProg = v.length - 1; if (b.dataset.add === 'testimonials') curStory = v.length - 1; if (b.dataset.add === 'videos') curVid = v.length - 1; panel(tab); }
-    else if (b.dataset.rm) { var p = b.dataset.rm.split('|'), v2 = MT.clone(get(p[0])); v2.splice(+p[1], 1); MT.setG(p[0], v2); panel(tab); }
+    else if (b.dataset.rm) {
+      var p = b.dataset.rm.split('|'), arr = MT.clone(get(p[0])), at = +p[1], gone = arr.splice(at, 1)[0];
+      MT.setG(p[0], arr); panel(tab);
+      MT.banner({ kind: 'ok', sound: 'click', title: 'Removed', body: 'Tap Undo to bring it back.', ms: 6500,
+        action: { label: 'Undo', run: function () { var back = MT.clone(get(p[0])); back.splice(at, 0, gone); MT.setG(p[0], back); panel(curTab); } } });
+    }
     else if (b.dataset.mv) {
       var q = b.dataset.mv.split('|'), arr = MT.clone(get(q[0])), from = +q[1], to = from + (+q[2]);
       if (to >= 0 && to < arr.length) { var t2 = arr[from]; arr[from] = arr[to]; arr[to] = t2; MT.setG(q[0], arr); panel(tab); }
     }
     else if (b.dataset.pick) { var pk = b.dataset.pick.split('|'); if (pk[0] === 'programmes') curProg = +pk[1]; if (pk[0] === 'testimonials') { curStory = +pk[1]; curComment = null; } if (pk[0] === 'videos') curVid = +pk[1]; panel(tab); }
-    else if (b.dataset.cpick) { curComment = +b.dataset.cpick; panel(tab); }
+    else if (b.dataset.cpick) { curComment = b.dataset.cpick; panel(tab); }
     else if (b.dataset.visitor !== undefined) MT.openDlg(+b.dataset.visitor);
     else if (b.dataset.filter) { curFilter = b.dataset.filter; panel(tab); }
-    else if (b.dataset.delimg) deleteImg(+b.dataset.delimg);
+    else if (b.dataset.delimg) deleteImg(b.dataset.delimg);
     else if (b.dataset.clear) { var s = S(); s.slots[b.dataset.clear] = null; MT.saveS(); MT.toast('Default restored', 'ok'); panel(tab); }
     else if (b.dataset.slotpick) { curSlot = b.dataset.slotpick; panel(tab); }
     else if (b.dataset.focusReset) { var f0 = S().focus || {}; delete f0[b.dataset.focusReset]; S().focus = f0; MT.saveS(); MT.toast('Framing reset', 'ok'); panel(tab); }
-    else if (b.dataset.delau) { if (confirm('Delete this recording?')) MT.mDel(+b.dataset.delau).then(MT.loadMedia).then(function () { MT.toast('Recording deleted', 'ok'); panel(tab); }); }
-    else if (b.dataset.cutau) cutAudio(+b.dataset.cutau);
-    else if (b.dataset.restau) restoreAudio(+b.dataset.restau);
-    else if (b.dataset.playsel) playSel(+b.dataset.playsel);
+    else if (b.dataset.delau) { if (confirm('Delete this recording?')) MT.mDel(b.dataset.delau).then(MT.loadMedia).then(function () { MT.toast('Recording deleted', 'ok'); panel(tab); }); }
+    else if (b.dataset.cutau) cutAudio(b.dataset.cutau);
+    else if (b.dataset.restau) restoreAudio(b.dataset.restau);
+    else if (b.dataset.playsel) playSel(b.dataset.playsel);
     else if (b.dataset.cm) {
-      var id = +b.dataset.id, l = MT.jget('mt-comments', []);
-      if (b.dataset.cm === 'del') { if (!confirm('Delete this comment for good?')) return; l = l.filter(function (c) { return c.id !== id; }); MT.toast('Comment deleted', 'ok'); }
-      else { l = l.map(function (c) { if (c.id === id) c.ok = b.dataset.cm === 'ok'; return c; }); MT.toast(b.dataset.cm === 'ok' ? 'Approved. It now shows on the site.' : 'Hidden from the site', 'ok'); }
-      MT.LS.set('mt-comments', JSON.stringify(l)); panel(tab);
+      var cid2 = b.dataset.id;
+      if (!DB().on) {
+        var l = MT.comments().slice();
+        if (b.dataset.cm === 'del') { if (!confirm('Delete this comment for good?')) return; l = l.filter(function (c) { return String(c.id) !== cid2; }); }
+        else l = l.map(function (c) { if (String(c.id) === cid2) c.ok = b.dataset.cm === 'ok'; return c; });
+        MT.LS.set('mt-comments', JSON.stringify(l)); MT.toast('Saved', 'ok'); panel(tab); return;
+      }
+      var job;
+      if (b.dataset.cm === 'del') { if (!confirm('Delete this comment for good?')) return; job = DB().deleteComment(cid2); }
+      else job = DB().setCommentApproved(cid2, b.dataset.cm === 'ok');
+      job.then(loadAdminData).then(function () {
+        MT.toast(b.dataset.cm === 'del' ? 'Comment deleted' : (b.dataset.cm === 'ok' ? 'Approved. It now shows on the site.' : 'Hidden from the site'), 'ok');
+        panel(tab);
+      }).catch(function () { MT.toast('Could not save. Check the connection.', 'err'); });
     }
     else if (b.dataset.filter === undefined && b.dataset.ifilter) { curInbox = b.dataset.ifilter; panel('inbox'); }
     else if (b.dataset.markread) { MT.LS.set('mt-inbox-seen', String(Date.now())); MT.toast('All caught up', 'ok'); panel('inbox'); }
@@ -850,7 +974,7 @@
       var up = function () { window.removeEventListener('pointermove', move); window.removeEventListener('pointerup', up); MT.flash(); };
       window.addEventListener('pointermove', move); window.addEventListener('pointerup', up);
     } else if (wv) {
-      var id = +wv.dataset.wave, x = MT.byId(id), r2 = wv.getBoundingClientRect();
+      var id = wv.dataset.wave, x = MT.byId(id), r2 = wv.getBoundingClientRect();
       if (!x || !x.dur) return;
       var a = AUD[id];
       if (!a) { a = new Audio(MT.urlOf(x)); AUD[id] = a; }
@@ -881,7 +1005,7 @@
     var max = kind === 'slot' && key === 'logo' ? 512 : 1800;
     var type = kind === 'slot' && key === 'logo' ? 'image/png' : 'image/jpeg';
     Promise.all(arr.map(function (f) {
-      return MT.shrink(f, max, type).then(function (b) { var id = MT.uid(); return MT.mPut({ id: id, kind: 'img', blob: b, date: Date.now(), cat: kind === 'cat' ? key : null, consent: false }).then(function () { return id; }); });
+      return MT.shrink(f, max, type).then(function (b) { var id = MT.uid(); return MT.mPut({ id: id, kind: 'img', blob: b, date: Date.now(), cat: kind === 'cat' ? key : null, consent: false }).then(function (res) { return (res && res.id) || id; }); });
     })).then(function (ids) {
       var s = S();
       if (kind === 'slot') { var old = s.slots[key]; s.slots[key] = ids[0]; if (old) MT.mDel(old); }

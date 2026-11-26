@@ -11,7 +11,8 @@ A premium, calm website and admin for a Kenyan children's and family charity. Vi
 5. **Motion is the owner's choice.** Four levels: Still, Subtle, Rich (default), Maximum. Everything must work with Still. Respect prefers-reduced-motion on top of this.
 6. **Sound is synthesised.** `ux.js` builds every sound with the Web Audio API. Do not add audio files for UI sounds unless asked. Browsers need one tap before sound can start, so nothing plays on load.
 7. **No new frameworks.** The project is static HTML, CSS and vanilla JS. Keep it that way until the backend decision is made.
-8. **Storage is a placeholder.** Everything in the browser is a stand-in for the backend. Mark new storage BACKEND so it can be found.
+8. **Storage is Supabase.** `supabase-client.js` (window.MTDB) is the only place that talks to the database. If config.js is empty, the site falls back to browser storage. Never put the service-role key in the site.
+9. **Row-level security is the access control.** Change `supabase/schema.sql` deliberately and re-run it. Keep the rules for consent and comment approval intact.
 
 ## Architecture
 - `app.js` owns the store (`S`), defaults, the public site render, and `window.MT` (the API the other files use).
@@ -19,7 +20,7 @@ A premium, calm website and admin for a Kenyan children's and family charity. Vi
 - `admin.js` owns the admin. It only talks to the rest of the site through `MT`.
 - Looks live in `S.look`: `morph` (one of 15 shapes), `glass` (on/off), `font` (one of 6 pairings), `size`, `motion`, `sound`. `MT.applyLook()` writes them to `<html data-*>` and CSS variables.
 - Shape styles are CSS variable sets keyed by `[data-morph=name]` in styles.css. The admin uses `.mp[data-morph=…]` to preview each one.
-- Events: `MT.track(kind, detail)` appends to `mt-events`. Kinds: comment, donate, social, call, prog, play, early. Preview and admin sessions are not tracked.
+- Events: `MT.track(kind, detail)` writes to the `events` table when connected, and to `mt-events` on the device. Kinds: comment, donate, social, call, prog, play, early. Preview and admin sessions are not tracked.
 
 ## Decisions taken (and why)
 - Floating navbar with a mega menu for "Our work". The fourth column shows the programme under the pointer, as in the brief. Touch devices open the menu on tap.
