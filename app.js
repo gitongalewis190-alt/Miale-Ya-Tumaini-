@@ -114,7 +114,7 @@
         { t: 'Legal assistance', d: 'Help for families with essential legal needs.' }
       ],
       programmes: [['Feeding', 'Daily hot meals for school-going children.', 'A hot meal every school day helps children stay in class, concentrate and grow.'], ['Holiday', 'Life-skills activities during school holidays.', 'Holidays are filled with life-skills activities so children keep learning and stay safe.'], ['Empowerment Training', 'Practical skills for parents and guardians.', 'Parents and guardians gain practical skills that help their families earn a steady living.'], ['Parental Conversations', 'Forums for parents.', 'Open forums where parents share experiences and support one another.'], ['Home Visits', 'We assess family needs and arrange support.', 'Our team visits families at home, listens, and arranges the support they need.'], ['Counseling', 'Sessions with trained professionals.', 'Children and families meet trained professionals in a safe, private space.']].map(function (p) { return { t: p[0], d: p[1], more: p[2] }; }),
-      figures: [{ n: '17000', s: '+', l: 'Meals a month' }, { n: '350', s: '+', l: 'Children a day' }, { n: '2014', s: '', l: 'Working since' }],
+      socials: [], figures: [{ n: '17000', s: '+', l: 'Meals a month' }, { n: '350', s: '+', l: 'Children a day' }, { n: '2014', s: '', l: 'Working since' }],
       give: { title: '', link: '', mpesa: '', account: '', amounts: 'KSh 500 · KSh 1,000 · KSh 2,500', text: 'Your gift pays for hot meals, counselling sessions and school-holiday activities.' },
       how: [{ t: 'Honest numbers', d: 'Every figure we publish comes from our own records.' }, { t: 'Consent first', d: 'We share a photograph or story only with the written consent of the person and their guardian.' }, { t: 'Data protection', d: 'Personal data is handled under the Kenya Data Protection Act, 2019.' }],
       testimonials: [],
@@ -133,7 +133,7 @@
         { t: 'Msaada wa kisheria', d: 'Msaada kwa familia zenye mahitaji ya kisheria.' }
       ],
       programmes: [['Lishe', 'Milo ya moto ya kila siku kwa watoto wanaosoma shuleni.', 'Mlo wa moto kila siku ya shule huwasaidia watoto kubaki darasani, kuzingatia na kukua.'], ['Likizo', 'Shughuli za stadi za maisha wakati wa likizo za shule.', 'Likizo hujazwa shughuli za stadi za maisha ili watoto waendelee kujifunza na kuwa salama.'], ['Mafunzo ya Uwezeshaji', 'Stadi za vitendo kwa wazazi na walezi.', 'Wazazi na walezi hupata stadi za vitendo zinazosaidia familia kupata kipato cha uhakika.'], ['Mazungumzo ya Wazazi', 'Majukwaa ya mazungumzo kwa wazazi.', 'Majukwaa ya wazi ambapo wazazi hushiriki uzoefu na kusaidiana.'], ['Ziara za Nyumbani', 'Tunatathmini mahitaji ya familia na kupanga msaada.', 'Timu yetu hutembelea familia nyumbani, husikiliza, na kupanga msaada wanaohitaji.'], ['Ushauri', 'Vikao na wataalamu waliofunzwa.', 'Watoto na familia hukutana na wataalamu waliofunzwa katika nafasi salama na ya faragha.']].map(function (p) { return { t: p[0], d: p[1], more: p[2] }; }),
-      figures: [{ n: '17000', s: '+', l: 'Milo kwa mwezi' }, { n: '350', s: '+', l: 'Watoto kila siku' }, { n: '2014', s: '', l: 'Tangu mwaka' }],
+      socials: [], figures: [{ n: '17000', s: '+', l: 'Milo kwa mwezi' }, { n: '350', s: '+', l: 'Watoto kila siku' }, { n: '2014', s: '', l: 'Tangu mwaka' }],
       give: { title: '', link: '', mpesa: '', account: '', amounts: 'KSh 500 · KSh 1,000 · KSh 2,500', text: 'Mchango wako hulipia milo ya moto, vikao vya ushauri na shughuli za likizo.' },
       how: [{ t: 'Takwimu za kweli', d: 'Kila takwimu tunayochapisha inatoka kwenye rekodi zetu wenyewe.' }, { t: 'Idhini kwanza', d: 'Tunashiriki picha au hadithi tu kwa idhini ya maandishi ya mhusika na mlezi wake.' }, { t: 'Ulinzi wa data', d: 'Taarifa binafsi zinashughulikiwa chini ya Sheria ya Ulinzi wa Data ya Kenya, 2019.' }],
       testimonials: [],
@@ -155,14 +155,14 @@
   if (S.logo) { S.slots.logo = S.logo; }
   delete S.hero; delete S.logo;
 
-  var saveT = null;
+  var saveT = null, warnedOnline = false;
   function saveS() {
     LS.set('mt-s', JSON.stringify(S));
     if (window.MTDB && MTDB.on && adminOn()) {
       clearTimeout(saveT);
       saveT = setTimeout(function () {
         MTDB.saveContent(S).catch(function () {
-          if (MT.banner) MT.banner({ kind: 'error', title: 'Not saved online', body: 'Check the connection. Your change is kept on this device.' });
+          if (MT.banner && !warnedOnline) { warnedOnline = true; MT.banner({ kind: 'error', title: 'Saved on this device', body: 'Online saving needs an admin sign-in. Changes stay here until it is switched on.' }); }
         });
       }, 700);
     }
@@ -171,6 +171,19 @@
   function setLangValue(l) { lang = l === 'sw' ? 'sw' : 'en'; LS.set('mt-lang', lang); document.documentElement.lang = lang; savePrefs(); }
   function get(k) { var v = S.c[lang][k]; return v !== undefined ? v : DEF[lang][k]; }
   function setG(k, v) { S.c[lang][k] = v; saveS(); flash(); }
+  function getIn(l, k) { return (S.c[l] && S.c[l][k] !== undefined) ? S.c[l][k] : DEF[l][k]; }
+  /* item photos are shared by both languages, so the same id is written to each */
+  function setItemImg(k, i, id) {
+    ['en', 'sw'].forEach(function (l) {
+      var arr = clone(getIn(l, k)); if (!arr[i]) return;
+      if (id) arr[i].img = id; else delete arr[i].img;
+      S.c[l][k] = arr;
+    });
+    saveS();
+  }
+  function setOverlay(key, o) { S.overlay = S.overlay || {}; S.overlay[key] = o; saveS(); }
+  function setSpeakerPic(aid, mid) { S.speakerPics = S.speakerPics || {}; if (mid) S.speakerPics[aid] = mid; else delete S.speakerPics[aid]; saveS(); }
+  function speakerPic(aid) { return S.speakerPics && S.speakerPics[aid]; }
   var ft;
   function flash() { var e = $('#saved'); if (e) { e.textContent = 'Saved'; clearTimeout(ft); ft = setTimeout(function () { e.textContent = ''; }, 1400); } }
   var tt;
@@ -277,19 +290,27 @@
   function byId(id) { return MEDIA.filter(function (m) { return String(m.id) === String(id); })[0]; }
   function urlOf(m) { if (m.url) return m.url; if (!urls[m.id]) { urls[m.id] = URL.createObjectURL(m.blob); } return urls[m.id]; }
   function imgUrl(id, fallback) { var m = id && byId(id); return m ? urlOf(m) : fallback; }
+  /* HD conversion: fixes camera rotation, keeps the longest side up to max, and saves at high quality. Never enlarges. */
   function shrink(file, max, type) {
-    return new Promise(function (res) {
-      var u = URL.createObjectURL(file), im = new Image();
-      im.onload = function () {
-        var k = Math.min(1, max / Math.max(im.width, im.height)), c = document.createElement('canvas');
-        c.width = Math.round(im.width * k); c.height = Math.round(im.height * k);
-        c.getContext('2d').drawImage(im, 0, 0, c.width, c.height);
-        URL.revokeObjectURL(u);
-        c.toBlob(function (b) { res(b || file); }, type, .86);
-      };
-      im.onerror = function () { URL.revokeObjectURL(u); res(file); };
-      im.src = u;
-    });
+    var load = window.createImageBitmap
+      ? createImageBitmap(file, { imageOrientation: 'from-image' }).then(function (bmp) { return { w: bmp.width, h: bmp.height, src: bmp }; }).catch(function () { return null; })
+      : Promise.resolve(null);
+    return load.then(function (d) {
+      if (d) return d;
+      return new Promise(function (res, rej) {
+        var u = URL.createObjectURL(file), im = new Image();
+        im.onload = function () { URL.revokeObjectURL(u); res({ w: im.width, h: im.height, src: im }); };
+        im.onerror = function () { URL.revokeObjectURL(u); rej(new Error('read')); };
+        im.src = u;
+      });
+    }).then(function (d) {
+      var k = Math.min(1, max / Math.max(d.w, d.h)), c = document.createElement('canvas');
+      c.width = Math.max(1, Math.round(d.w * k)); c.height = Math.max(1, Math.round(d.h * k));
+      var ctx = c.getContext('2d'); ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = 'high';
+      ctx.drawImage(d.src, 0, 0, c.width, c.height);
+      if (d.src && d.src.close) d.src.close();
+      return new Promise(function (res) { c.toBlob(function (b) { res(b || file); }, type, type === 'image/png' ? undefined : 0.92); });
+    }).catch(function () { return file; });
   }
   function fmt(s) { s = Math.max(0, Math.round(s || 0)); return Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'); }
   function uid() { return Date.now() + Math.floor(Math.random() * 100000); }
@@ -404,10 +425,38 @@
     return null;
   }
 
+  /* home photo overlays, the photos that take turns, speaker and item helpers */
+  function ovlHtml(key, o) {
+    o = o || (S.overlay && S.overlay[key]);
+    if (!o || !o.text) return '';
+    return '<div class="ovl p-' + (o.pos || 'bottom') + ' fx-' + (o.fx || 'shadow') + '" aria-hidden="true"><span>' + esc(o.text) + '</span></div>';
+  }
+  function heroFrame(hero, style, name) {
+    if (!hero) return '<div class="frame-fallback">' + esc(name) + '</div>';
+    var extra = (S.heroSlides || []).map(function (id) { return imgUrl(id, ''); }).filter(Boolean);
+    var all = [hero].concat(extra);
+    if (all.length === 1) return '<img src="' + hero + '" alt="" style="' + style + '">';
+    return all.map(function (u, i) { return '<img class="hs' + (i === 0 ? ' on' : '') + '" src="' + u + '" alt="" style="' + style + '">'; }).join('');
+  }
+  var heroTick = 0;
+  function cycleHero() {
+    var sl = $$('.frame .hs'), mo = document.documentElement.dataset.motion;
+    if (sl.length < 2 || mo === 'off') return;
+    heroTick = (heroTick + 1) % sl.length;
+    sl.forEach(function (x, i) { x.classList.toggle('on', i === heroTick); });
+  }
+  function spkHtml(id) { var m = S.speakerPics && S.speakerPics[id], u = m ? imgUrl(m, '') : ''; return u ? '<img class="spk" src="' + u + '" alt="">' : ''; }
+  function extraSocials() {
+    return (get('socials') || []).filter(function (s) { return s && /^https?:\/\//.test(s.url || ''); }).map(function (s) {
+      var lab = s.label || 'Link';
+      return '<a class="soc soc-t" href="' + esc(s.url) + '" rel="noopener" target="_blank" aria-label="' + esc(lab) + '" data-track="social" data-d="' + esc(lab) + '">' + esc(lab.charAt(0).toUpperCase()) + '</a>';
+    }).join('');
+  }
+
   /* programme card, used by the site and by the admin preview (plain = no reveal, no click) */
   function cardHtml(p, i, plain) {
     return '<article class="card lift' + (plain ? '' : ' click reveal') + '"' + (plain ? '' : ' tabindex="0" role="button" data-p="' + i + '" data-track="prog" data-d="' + esc(p.t) + '"') + ' aria-label="' + esc(p.t) + '">' +
-      '<div class="ico">' + svgp(PICO[i % 6]) + '</div><h3>' + esc(p.t) + '</h3><p class="muted" style="margin:0">' + esc(p.d) + '</p><span class="more">' + esc(sec('more')) + I.arrow + '</span></article>';
+      (p.img && imgUrl(p.img, '') ? '<div class="pthumb"><img src="' + imgUrl(p.img, '') + '" alt="" loading="lazy"></div>' : '<div class="ico">' + svgp(PICO[i % 6]) + '</div>') + '<h3>' + esc(p.t) + '</h3><p class="muted" style="margin:0">' + esc(p.d) + '</p><span class="more">' + esc(sec('more')) + I.arrow + '</span></article>';
   }
   function storyHtml(s) {
     return '<figure class="card lift tcard' + (s.plain ? '' : ' reveal') + '"><div class="qm" aria-hidden="true">“</div><q>' + esc(s.text) + '</q><figcaption class="who"><span class="av">' + esc((s.name || '•').charAt(0).toUpperCase()) + '</span><div><b>' + esc(s.name) + '</b>' + (s.role ? '<small>' + esc(s.role) + '</small>' : '') + '</div></figcaption></figure>';
@@ -415,7 +464,7 @@
   function donateInner(G, donateImg) {
     var link = G.link ? '<a class="btn btn-b" href="' + esc(G.link) + '" rel="noopener" target="_blank" data-track="donate" data-d="link">' : '<a class="btn btn-b" href="tel:+254723315423" data-track="donate" data-d="phone">';
     return '<div class="card donate-card"' + (donateImg ? ' style="padding:0;overflow:hidden"' : '') + '>' +
-      (donateImg ? '<img class="fimg" src="' + donateImg + '" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;' + focusStyle('donate') + '">' : '') +
+      (donateImg ? '<img class="fimg" src="' + donateImg + '" alt="" style="width:100%;aspect-ratio:16/9;object-fit:cover;' + focusStyle('donate') + '">' + ovlHtml('donate') : '') +
       '<div style="padding:' + (donateImg ? '24px 0 0' : '0') + '"><h2 class="title">' + esc(G.title || sec('give_t')) + '</h2><p>' + esc(G.text) + '</p><div class="amounts">' + esc(G.amounts).split('·').map(function (a) { return '<span>' + esc(a.trim()) + '</span>'; }).join('') + '</div>' + link + esc(sec('give_btn')) + '</a></div></div>';
   }
 
@@ -458,19 +507,19 @@
     $('#freach').innerHTML = C.phones.map(function (p) { return '<a href="' + telOf(p) + '" data-track="call" data-d="' + esc(p) + '">' + esc(p) + '</a>'; }).join('') + '<a href="mailto:' + esc(C.email) + '">' + esc(C.email) + '</a>';
 
     var h = '';
-    h += '<section class="hero wrap" id="top"><div class="hgrid"><div><p class="eyebrow">' + esc(B.tag) + '</p><h1 id="h1" aria-label="' + esc(H.h1) + '">' +
+    h += '<section class="hero wrap" id="top"><div class="hgrid lay-' + (H.layout || 'right') + ' anim-' + (H.anim || 'words') + '"><div><p class="eyebrow">' + esc(B.tag) + '</p><h1 id="h1" aria-label="' + esc(H.h1) + '">' +
       H.h1.split(' ').map(function (w, i) { return '<span class="w" aria-hidden="true"><span style="--k:' + i + '">' + esc(w) + '</span></span> '; }).join('') +
       '</h1><p class="lead">' + esc(H.lead) + '</p><div class="acts"><a class="btn btn-p" href="#give" data-track="donate" data-d="hero">' + esc(H.cta1) + '</a><a class="btn btn-s" href="#programmes">' + esc(H.cta2) + '</a></div></div>' +
-      '<div class="frame-wrap"><div class="frame' + (hero ? '' : ' empty') + '">' + (hero ? '<img src="' + hero + '" alt="" style="' + focusStyle('hero') + '">' : '<div class="frame-fallback">' + esc(B.name) + '</div>') + '</div>' +
+      '<div class="frame-wrap"><div class="frame r-' + (H.ratio || 'portrait') + (hero ? '' : ' empty') + '">' + heroFrame(hero, focusStyle('hero'), B.name) + ovlHtml('hero') + '</div>' +
       (F[0] ? '<div class="stat-chip a"><b class="count" data-count="' + esc(F[0].n) + '" data-suffix="' + esc(F[0].s) + '">' + esc(Number(F[0].n).toLocaleString('en-US')) + esc(F[0].s) + '</b><small>' + esc(F[0].l) + '</small></div>' : '') +
       (F[1] ? '<div class="stat-chip b"><b>' + esc(Number(F[1].n).toLocaleString('en-US')) + esc(F[1].s) + '</b><small>' + esc(F[1].l) + '</small></div>' : '') +
       '</div></div></section>';
-    h += '<div class="pillars wrap-full" aria-label="' + esc(sec('pil_t')) + '">' + PL.map(function (p) { return '<div class="reveal"><b>' + esc(p.t) + '</b><span>' + esc(p.d) + '</span></div>'; }).join('') + '</div>';
+    h += '<div class="pillars wrap-full" aria-label="' + esc(sec('pil_t')) + '">' + PL.map(function (p) { return '<div class="reveal">' + (p.img && imgUrl(p.img, '') ? '<img class="pil-img" src="' + imgUrl(p.img, '') + '" alt="" loading="lazy">' : '') + '<b>' + esc(p.t) + '</b><span>' + esc(p.d) + '</span></div>'; }).join('') + '</div>';
     h += '<section class="wrap sec" id="mission"><p class="mission" id="mtext">' + M.text.split(' ').map(function (w) { return '<span class="mw">' + esc(w) + '</span>'; }).join(' ') + '</p></section>';
     h += '<section class="wrap sec" id="programmes"><h2 class="title reveal">' + esc(sec('prog_t')) + '</h2><p class="intro reveal">' + esc(sec('prog_i')) + '</p><div class="grid g3 bento">' +
       P.map(function (p, i) { return cardHtml(p, i, false); }).join('') + '</div></section>';
     h += '<section class="sec" id="impact"><div class="band"><div class="wrap" style="padding-block:clamp(56px,8vw,92px)"><h2 class="title reveal">' + esc(sec('imp_t')) + '</h2><p class="intro reveal">' + esc(sec('imp_i')) + '</p><div class="grid g3 fig-grid">' +
-      F.map(function (f, i) { return '<div class="card reveal" style="--i:' + i + '"><p class="fig count" data-count="' + esc(f.n) + '" data-suffix="' + esc(f.s) + '"' + (/^\d{4}$/.test(f.n) ? ' data-plain="1"' : '') + '>0</p><p class="fig-label">' + esc(f.l) + '</p></div>'; }).join('') + '</div></div></div></section>';
+      F.map(function (f, i) { return '<div class="card reveal" style="--i:' + i + '"><p class="fig count" data-count="' + esc(f.n) + '" data-suffix="' + esc(f.s) + '"' + (/^\d{4}$/.test(f.n) ? ' data-plain="1"' : '') + '>0</p><p class="fig-label">' + esc(f.l) + (f.src ? '<small class="fig-src">' + esc(f.src) + '</small>' : '') + '</p></div>'; }).join('') + '</div></div></div></section>';
     h += '<section class="wrap sec" id="give"><div class="donate">' + donateInner(GV, donateImg).replace('class="card donate-card"', 'class="card donate-card reveal"') +
       '<div class="card reveal"><h3>' + esc(sec('give_call')) + '</h3>' + C.phones.map(function (p) { return '<a class="clink" href="' + telOf(p) + '" data-track="call" data-d="' + esc(p) + '">' + I.phone + '<span>' + esc(p) + '</span></a>'; }).join('') +
       (GV.mpesa ? '<p style="margin-top:14px"><b>M-Pesa:</b> ' + esc(GV.mpesa) + '</p>' : '') + (GV.account ? '<p><b>Account:</b> ' + esc(GV.account) + '</p>' : '') + '</div></div></section>';
@@ -480,7 +529,7 @@
     }
     if (voices.length) {
       h += '<section class="wrap sec" id="voices"><h2 class="title reveal">' + esc(sec('voi_t')) + '</h2><p class="intro reveal">' + esc(sec('voi_i')) + '</p><div class="grid g2">' +
-        voices.map(function (a) { return '<article class="card voice reveal" data-id="' + a.id + '"><div class="vtop"><button class="play" aria-label="Play ' + esc(a.title) + '">' + I.play + '</button><div><h3 style="margin:0 0 4px">' + esc(a.title) + '</h3><div class="vmeta">' + (a.speaker ? '<span>' + esc(a.speaker) + '</span>' : '') + (a.lang ? '<span class="chip">' + esc(a.lang) + '</span>' : '') + '<span>' + new Date(a.date).toLocaleDateString(lang === 'sw' ? 'sw-KE' : 'en-KE', { day: 'numeric', month: 'short', year: 'numeric' }) + '</span></div></div></div>' + (a.desc ? '<p class="muted" style="margin:0">' + esc(a.desc) + '</p>' : '') + '<div class="bar" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div><div class="time"><span class="tc">0:00</span><span>' + fmt(a.dur) + '</span></div></article>'; }).join('') + '</div></section>';
+        voices.map(function (a) { return '<article class="card voice reveal" data-id="' + a.id + '"><div class="vtop">' + spkHtml(a.id) + '<button class="play" aria-label="Play ' + esc(a.title) + '">' + I.play + '</button><div><h3 style="margin:0 0 4px">' + esc(a.title) + '</h3><div class="vmeta">' + (a.speaker ? '<span>' + esc(a.speaker) + '</span>' : '') + (a.lang ? '<span class="chip">' + esc(a.lang) + '</span>' : '') + '<span>' + new Date(a.date).toLocaleDateString(lang === 'sw' ? 'sw-KE' : 'en-KE', { day: 'numeric', month: 'short', year: 'numeric' }) + '</span></div></div></div>' + (a.desc ? '<p class="muted" style="margin:0">' + esc(a.desc) + '</p>' : '') + '<div class="bar" role="slider" tabindex="0" aria-label="Seek" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0"><i></i></div><div class="time"><span class="tc">0:00</span><span>' + fmt(a.dur) + '</span></div></article>'; }).join('') + '</div></section>';
     }
     if (vids.length) {
       h += '<section class="wrap sec" id="videos"><h2 class="title reveal">' + esc(sec('vid_t')) + '</h2><p class="intro reveal">' + esc(sec('vid_i')) + '</p><div class="grid g2">' +
@@ -494,7 +543,7 @@
     h += '<section class="wrap sec" id="visit"><h2 class="title reveal">' + esc(sec('vis_t')) + '</h2><div class="grid g2" style="margin-top:1.2em"><div class="card reveal">' +
       C.phones.map(function (p) { return '<a class="clink" href="' + telOf(p) + '" data-track="call" data-d="' + esc(p) + '">' + I.phone + '<span>' + esc(p) + '</span></a>'; }).join('') +
       '<a class="clink" href="mailto:' + esc(C.email) + '">' + I.mail + '<span>' + esc(C.email) + '</span></a>' +
-      '<div class="csoc"><a class="soc" href="' + esc(C.fb) + '" rel="noopener" target="_blank" aria-label="Facebook" data-track="social" data-d="facebook">' + I.fb + '</a><a class="soc" href="' + esc(C.ig) + '" rel="noopener" target="_blank" aria-label="Instagram" data-track="social" data-d="instagram">' + I.ig + '</a><a class="soc" href="' + wa + '" rel="noopener" target="_blank" aria-label="WhatsApp" data-track="social" data-d="whatsapp">' + I.wa + '</a></div></div>' +
+      '<div class="csoc"><a class="soc" href="' + esc(C.fb) + '" rel="noopener" target="_blank" aria-label="Facebook" data-track="social" data-d="facebook">' + I.fb + '</a><a class="soc" href="' + esc(C.ig) + '" rel="noopener" target="_blank" aria-label="Instagram" data-track="social" data-d="instagram">' + I.ig + '</a><a class="soc" href="' + wa + '" rel="noopener" target="_blank" aria-label="WhatsApp" data-track="social" data-d="whatsapp">' + I.wa + '</a>' + extraSocials() + '</div></div>' +
       '<div class="card reveal"><h3>' + esc(sec('find')) + '</h3>' + C.places.map(function (p) { return '<div class="clink" style="cursor:default">' + I.pin + '<span>' + esc(p) + '</span></div>'; }).join('') + '</div></div></section>';
     h += '<section class="wrap sec" id="share"><div class="card connect reveal"><div><h2>' + esc(sec('con_t')) + '</h2><p class="muted">' + esc(sec('con_i')) + '</p></div>' +
       '<form class="form" id="cform" novalidate><div class="field"><label for="cn">' + esc(sec('c_name')) + '</label><input class="in" id="cn" maxlength="40" autocomplete="given-name"></div>' +
@@ -755,7 +804,7 @@
     $: $, $$: $$, esc: esc, I: I, LS: LS, jget: jget, clone: clone, S: function () { return S; }, DEF: DEF, SEC_EN: SEC_EN,
     PALETTES: PALETTES, CATS: CATS, CONSENT_CATS: CONSENT_CATS, MORPHS: MORPHS, FONTS: FONTS, MOTIONS: MOTIONS, SOUND_EV: SOUND_EV, SOUND_DEF: SOUND_DEF,
     get: get, saveS: saveS, setG: setG, flash: flash, toast: toast, getLang: getLang, setLang: setLang, lang: function () { return lang; },
-    MEDIA: function () { return MEDIA; }, loadMedia: loadMedia, byId: byId, urlOf: urlOf, imgUrl: imgUrl, mPut: mPut, mDel: mDel, shrink: shrink, fmt: fmt, uid: uid,
+    ovlHtml: ovlHtml, setItemImg: setItemImg, setOverlay: setOverlay, getIn: getIn, setSpeakerPic: setSpeakerPic, speakerPic: speakerPic, MEDIA: function () { return MEDIA; }, loadMedia: loadMedia, byId: byId, urlOf: urlOf, imgUrl: imgUrl, mPut: mPut, mDel: mDel, shrink: shrink, fmt: fmt, uid: uid,
     applyColors: applyColors, applyTheme: applyTheme, applyLook: applyLook, look: look, setLook: setLook, loadFont: loadFont, focusStyle: focusStyle,
     themeSeg: themeSeg, placeSeg: placeSeg, langMenu: langMenu, labelOf: labelOf, reduce: reduce, phone: phone, IS_PREVIEW: IS_PREVIEW,
     cardHtml: cardHtml, storyHtml: storyHtml, openDlg: openDlg, parseVideo: parseVideo, track: track, events: events, visits: visits, dayKey: dayKey,
@@ -763,6 +812,7 @@
     comments: function () { return window.__MT_ADMIN_COMMENTS || jget('mt-comments', []); }, sec: sec, SECS: SECS, setHidden: setHidden, deviceId: deviceId, svgp: svgp, PICO: PICO
   };
 
+  setInterval(cycleHero, 5000);
   openDB().then(loadRemote).then(loadMedia).then(function () {
     applyColors();
     applyLook();

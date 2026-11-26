@@ -1,7 +1,7 @@
 /* Miale ya Tumaini · service worker
    Precaches the shell and serves offline.html for navigations when offline.
    Bump CACHE_NAME whenever a shell file changes. */
-const CACHE_NAME = 'miale-shell-v6';
+const CACHE_NAME = 'miale-shell-v8';
 const SHELL = ['./', './index.html', './styles.css', './config.js', './supabase-client.js', './app.js', './ux.js', './admin.js', './offline.html',
   './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/logo.png'];
 

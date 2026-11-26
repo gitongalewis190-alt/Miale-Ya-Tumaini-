@@ -138,7 +138,6 @@
   document.addEventListener('keydown', function (e) {
     var t = e.target;
     if (t.matches && t.matches('input:not([type=password]):not([type=checkbox]):not([type=radio]):not([type=range]):not([type=color]), textarea')) {
-      if (e.key.length === 1 || e.key === 'Backspace') sfx('click', 'key-soft', false);
       return;
     }
     if ((e.key === 'Enter' || e.key === ' ') && interactive(t)) { var now = performance.now(); if (now - lastTick > 35) { lastTick = now; sfx(kindOf(t)); } }
