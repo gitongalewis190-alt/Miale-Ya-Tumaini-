@@ -1,70 +1,22 @@
 /* Miale ya Tumaini · service worker
-   Precaches the shell, serves an offline page for navigations when offline. */
-const CACHE_NAME = 'miale-shell-v3';
-const SHELL = [
-  './',
-  './index.html',
-  './styles.css',
-  './app.js',
-  './admin.js',
-  './offline.html',
-  './manifest.webmanifest',
-  './icons/icon-192.png',
-  './icons/icon-512.png',
-  './icons/logo.png'
-];
+   Precaches the shell and serves offline.html for navigations when offline.
+   Bump CACHE_NAME whenever a shell file changes. */
+const CACHE_NAME = 'miale-shell-v4';
+const SHELL = ['./', './index.html', './styles.css', './app.js', './ux.js', './admin.js', './offline.html',
+  './manifest.webmanifest', './icons/icon-192.png', './icons/icon-512.png', './icons/logo.png'];
 
-self.addEventListener('install', function (event) {
-  event.waitUntil(
-    caches.open(CACHE_NAME)
-      .then(function (cache) { return cache.addAll(SHELL); })
-      .then(function () { return self.skipWaiting(); })
-  );
+self.addEventListener('install', (event) => {
+  event.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(SHELL)).then(() => self.skipWaiting()));
 });
-
-self.addEventListener('activate', function (event) {
-  event.waitUntil(
-    caches.keys()
-      .then(function (keys) {
-        return Promise.all(keys.filter(function (k) { return k !== CACHE_NAME; }).map(function (k) { return caches.delete(k); }));
-      })
-      .then(function () { return self.clients.claim(); })
-  );
+self.addEventListener('activate', (event) => {
+  event.waitUntil(caches.keys().then((keys) => Promise.all(keys.filter((k) => k !== CACHE_NAME).map((k) => caches.delete(k)))).then(() => self.clients.claim()));
 });
-
-self.addEventListener('fetch', function (event) {
-  const request = event.request;
-  if (request.method !== 'GET') { return; }
-  const url = new URL(request.url);
-  if (url.origin !== self.location.origin) { return; }
-
-  if (request.mode === 'navigate') {
-    event.respondWith(
-      fetch(request)
-        .then(function (response) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put(request, copy); }).catch(function () {});
-          return response;
-        })
-        .catch(function () {
-          return caches.match(request).then(function (cached) {
-            return cached || caches.match('./offline.html');
-          });
-        })
-    );
+self.addEventListener('fetch', (event) => {
+  const req = event.request;
+  if (req.method !== 'GET' || new URL(req.url).origin !== self.location.origin) return;
+  if (req.mode === 'navigate') {
+    event.respondWith(fetch(req).catch(() => caches.match('./offline.html')));
     return;
   }
-
-  event.respondWith(
-    caches.match(request).then(function (cached) {
-      if (cached) { return cached; }
-      return fetch(request).then(function (response) {
-        if (response && response.status === 200) {
-          const copy = response.clone();
-          caches.open(CACHE_NAME).then(function (cache) { cache.put(request, copy); }).catch(function () {});
-        }
-        return response;
-      });
-    }).catch(function () { return Response.error(); })
-  );
+  event.respondWith(caches.match(req).then((hit) => hit || fetch(req)));
 });
